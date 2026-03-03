@@ -1,16 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout/Layout';
 import axiosInstance from '../../utils/axiosConfig';
 import { API_ENDPOINTS } from '../../config/api';
 import { useToast } from '../../context/ToastContext';
 import { FaUser, FaEnvelope, FaLock, FaPhone, FaBuilding, FaSave, FaTimes, FaEye, FaEyeSlash } from 'react-icons/fa';
+import {
+  sanitizeInput,
+    sanitizeNameInput,
+  validateFirstName,
+  validateLastName,
+  validateEmail,
+  validatePhoneNumber,
+  validateExperience,
+  validateDepartment,
+  validateSubBusinessUnit,
+  validateDesignation,
+  validateOfficeLocation,
+  validateManagerId,
+  validateSalary,
+  validateAllFields,
+} from '../../utils/createEmployeeValidation';
 
 const CreateEmployee = () => {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [validationErrors, setValidationErrors] = useState({
+    firstName: { isValid: true, error: '' },
+    lastName: { isValid: true, error: '' },
+    personalEmail: { isValid: true, error: '' },
+    phone: { isValid: true, error: '' },
+    currentExperience: { isValid: true, error: '' },
+    department: { isValid: true, error: '' },
+    subBusinessUnit: { isValid: true, error: '' },
+    designation: { isValid: true, error: '' },
+    currentOfficeLocation: { isValid: true, error: '' },
+    managerId: { isValid: true, error: '' },
+    salary: { isValid: true, error: '' },
+  });
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -32,71 +61,141 @@ const CreateEmployee = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    if (errors[name]) {
+    console.log(`[${name}] Raw input:`, value);
+    // Use name-specific sanitizer for fields that allow internal spaces to preserve typing
+    const spaceFriendlyFields = ['firstName', 'lastName', 'department', 'designation', 'currentOfficeLocation'];
+    const sanitized = spaceFriendlyFields.includes(name) ? sanitizeNameInput(value) : sanitizeInput(value);
+    console.log(`[${name}] After sanitize:`, sanitized);
+    
+    // Real-time validation for each field
+    let validation = { isValid: true, error: '' };
+    
+    switch (name) {
+      case 'firstName':
+        validation = validateFirstName(sanitized);
+        console.log(`[firstName] Validation result:`, validation);
+        break;
+      case 'lastName':
+        validation = validateLastName(sanitized);
+        break;
+      case 'personalEmail':
+        validation = validateEmail(sanitized);
+        break;
+      case 'phone':
+        validation = validatePhoneNumber(sanitized);
+        break;
+      case 'currentExperience':
+        validation = validateExperience(sanitized);
+        break;
+      case 'department':
+        validation = validateDepartment(sanitized);
+        break;
+      case 'subBusinessUnit':
+        validation = validateSubBusinessUnit(sanitized);
+        break;
+      case 'designation':
+        validation = validateDesignation(sanitized);
+        break;
+      case 'currentOfficeLocation':
+        validation = validateOfficeLocation(sanitized);
+        break;
+      case 'managerId':
+        validation = validateManagerId(sanitized);
+        break;
+      case 'salary':
+        validation = validateSalary(sanitized);
+        break;
+      default:
+        break;
+    }
+    
+    setValidationErrors((prev) => ({ ...prev, [name]: validation }));
+    setFormData((prev) => ({ ...prev, [name]: sanitized }));
+    
+    // Clear old-style errors if field becomes valid
+    if (validation.isValid && errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
 
-  const fetchManagers = async () => {
-    try {
-      const res = await axiosInstance.get(API_ENDPOINTS.HR.GET_ALL_EMPLOYEES);
-      const list = Array.isArray(res.data)
-        ? res.data
-        : Array.isArray(res.data?.data)
-        ? res.data.data
-        : [];
-      setManagers(list);
-    } catch (error) {
-      setManagers([]);
+  const handleFieldBlur = (fieldName) => {
+    // Re-validate on blur for confirmation
+    const value = formData[fieldName];
+    let validation = { isValid: true, error: '' };
+    
+    switch (fieldName) {
+      case 'firstName':
+        validation = validateFirstName(value);
+        break;
+      case 'lastName':
+        validation = validateLastName(value);
+        break;
+      case 'personalEmail':
+        validation = validateEmail(value);
+        break;
+      case 'phone':
+        validation = validatePhoneNumber(value);
+        break;
+      case 'currentExperience':
+        validation = validateExperience(value);
+        break;
+      case 'department':
+        validation = validateDepartment(value);
+        break;
+      case 'subBusinessUnit':
+        validation = validateSubBusinessUnit(value);
+        break;
+      case 'designation':
+        validation = validateDesignation(value);
+        break;
+      case 'currentOfficeLocation':
+        validation = validateOfficeLocation(value);
+        break;
+      case 'managerId':
+        validation = validateManagerId(value);
+        break;
+      case 'salary':
+        validation = validateSalary(value);
+        break;
+      default:
+        break;
     }
+    
+    setValidationErrors((prev) => ({ ...prev, [fieldName]: validation }));
   };
 
-  React.useEffect(() => {
-    fetchManagers();
-  }, []);
+  const isFormValid = useCallback(() => {
+    return Object.values(validationErrors).every((field) => field.isValid);
+  }, [validationErrors]);
+
 
   const validateForm = () => {
+    // Use new validation functions to validate all fields
+    const validationResults = {
+      firstName: validateFirstName(formData.firstName),
+      lastName: validateLastName(formData.lastName),
+      personalEmail: validateEmail(formData.personalEmail),
+      phone: validatePhoneNumber(formData.phone),
+      currentExperience: validateExperience(formData.currentExperience),
+      department: validateDepartment(formData.department),
+      subBusinessUnit: validateSubBusinessUnit(formData.subBusinessUnit),
+      designation: validateDesignation(formData.designation),
+      currentOfficeLocation: validateOfficeLocation(formData.currentOfficeLocation),
+      managerId: validateManagerId(formData.managerId),
+      salary: validateSalary(formData.salary),
+    };
+
+    // Update validation errors state
+    setValidationErrors(validationResults);
+
+    // Build old-style errors for backward compatibility
     const newErrors = {};
-
-    const nameRegex = /^[A-Za-z\s]+$/;
-
-if (!formData.firstName.trim()) {
-  newErrors.firstName = 'First name is required';
-} else if (!nameRegex.test(formData.firstName)) {
-  newErrors.firstName = 'First name should contain only letters';
-}
-
-if (!formData.lastName.trim()) {
-  newErrors.lastName = 'Last name is required';
-} else if (!nameRegex.test(formData.lastName)) {
-  newErrors.lastName = 'Last name should contain only letters';
-}
+    Object.entries(validationResults).forEach(([field, result]) => {
+      if (!result.isValid) {
+        newErrors[field] = result.error;
+      }
+    });
     
-    if (!formData.personalEmail.trim()) {
-      newErrors.personalEmail = 'Personal email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.personalEmail)) {
-      newErrors.personalEmail = 'Invalid email format';
-    }
-    if (!formData.phone.trim()) newErrors.phone = 'Phone is required';
-    if (!formData.department.trim()) newErrors.department = 'Department is required';
-    if (!formData.designation.trim()) newErrors.designation = 'Designation is required';
-    if (!formData.salary || formData.salary <= 10000) newErrors.salary = 'Valid salary is required';
-
-
-    if (!formData.currentExperience || formData.currentExperience < 0)
-  newErrors.currentExperience = 'Valid experience required';
-
-  if (!formData.subBusinessUnit.trim())
-  newErrors.subBusinessUnit = 'Sub Business Unit required';
-
-  if (formData.managerId && isNaN(formData.managerId)) {
-    newErrors.managerId = "Manager ID must be a number";
-  }
-
-if (!formData.currentOfficeLocation.trim())
-  newErrors.currentOfficeLocation = 'Office location required';
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -172,14 +271,20 @@ if (!formData.currentOfficeLocation.trim())
                         </span>
                         <input
                           type="text"
-                          className={`form-control ${errors.firstName ? 'is-invalid' : ''}`}
-                          name="firstName"
-                          value={formData.firstName}
-                          onChange={handleChange}
-                          placeholder="Enter first name"
-                        />
+                        className={`form-control ${!validationErrors.firstName.isValid ? 'is-invalid' : ''}`}
+                        name="firstName"
+                        value={formData.firstName}
+                        onChange={handleChange}
+                        onBlur={() => handleFieldBlur('firstName')}
+                        placeholder="First Name"
+                        maxLength="30"
+                      />
                       </div>
-                      {errors.firstName && <div className="invalid-feedback d-block">{errors.firstName}</div>}
+                      {formData.firstName && validationErrors.firstName && (
+                        <small className={validationErrors.firstName.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.firstName.isValid ? '✓ Valid' : validationErrors.firstName.error}
+                        </small>
+                      )}
                     </div>
 
                     <div className="col-md-6">
@@ -192,14 +297,20 @@ if (!formData.currentOfficeLocation.trim())
                         </span>
                         <input
                           type="text"
-                          className={`form-control ${errors.lastName ? 'is-invalid' : ''}`}
-                          name="lastName"
-                          value={formData.lastName}
-                          onChange={handleChange}
-                          placeholder="Enter last name"
-                        />
+                        className={`form-control ${!validationErrors.lastName.isValid ? 'is-invalid' : ''}`}
+                        name="lastName"
+                        value={formData.lastName}
+                        onChange={handleChange}
+                        onBlur={() => handleFieldBlur('lastName')}
+                        placeholder="Last Name"
+                        maxLength="30"
+                      />
                       </div>
-                      {errors.lastName && <div className="invalid-feedback d-block">{errors.lastName}</div>}
+                      {formData.lastName && validationErrors.lastName && (
+                        <small className={validationErrors.lastName.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.lastName.isValid ? '✓ Valid' : validationErrors.lastName.error}
+                        </small>
+                      )}
                     </div>
 
 
@@ -214,14 +325,19 @@ if (!formData.currentOfficeLocation.trim())
                         </span>
                         <input
                           type="email"
-                          className={`form-control ${errors.personalEmail ? 'is-invalid' : ''}`}
+                          className={`form-control ${!validationErrors.personalEmail.isValid ? 'is-invalid' : ''}`}
                           name="personalEmail"
                           value={formData.personalEmail}
                           onChange={handleChange}
+                          onBlur={() => handleFieldBlur('personalEmail')}
                           placeholder="employee@gmail.com"
                         />
                       </div>
-                      {errors.personalEmail && <div className="invalid-feedback d-block">{errors.personalEmail}</div>}
+                      {formData.personalEmail && validationErrors.personalEmail && (
+                        <small className={validationErrors.personalEmail.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.personalEmail.isValid ? '✓ Valid' : validationErrors.personalEmail.error}
+                        </small>
+                      )}
                     </div>
 
 
@@ -235,33 +351,42 @@ if (!formData.currentOfficeLocation.trim())
                         </span>
                         <input
                           type="tel"
-                          className={`form-control ${errors.phone ? 'is-invalid' : ''}`}
+                          className={`form-control ${!validationErrors.phone.isValid ? 'is-invalid' : ''}`}
                           name="phone"
                           value={formData.phone}
                           onChange={handleChange}
-                          placeholder="+1 234 567 8900"
+                          onBlur={() => handleFieldBlur('phone')}
+                          placeholder="+91 XXXXXXXXXX"
+                          maxLength="13"
                         />
                       </div>
-                      {errors.phone && <div className="invalid-feedback d-block">{errors.phone}</div>}
+                      {formData.phone && validationErrors.phone && (
+                        <small className={validationErrors.phone.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.phone.isValid ? '✓ Valid' : validationErrors.phone.error}
+                        </small>
+                      )}
                     </div>
 
                     <div className="col-md-6">
   <label className="form-label fw-semibold">
-    Experience (Years)
+    Experience (Years) <span className="text-danger">*</span>
   </label>
   <input
     type="number"
-    step="0.1"
-    className={`form-control ${errors.currentExperience ? 'is-invalid' : ''}`}
+    step="1"
+    className={`form-control ${!validationErrors.currentExperience.isValid ? 'is-invalid' : ''}`}
     name="currentExperience"
     value={formData.currentExperience}
     onChange={handleChange}
-    placeholder="0.1"
+    onBlur={() => handleFieldBlur('currentExperience')}
+    placeholder="0-50"
+    min="0"
+    max="50"
   />
-  {errors.currentExperience && (
-    <div className="invalid-feedback d-block">
-      {errors.currentExperience}
-    </div>
+  {formData.currentExperience && validationErrors.currentExperience && (
+    <small className={validationErrors.currentExperience.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+      {validationErrors.currentExperience.isValid ? '✓ Valid' : validationErrors.currentExperience.error}
+    </small>
   )}
 </div>
 
@@ -276,32 +401,41 @@ if (!formData.currentOfficeLocation.trim())
                         </span>
                         <input
                           type="text"
-                          className={`form-control ${errors.department ? 'is-invalid' : ''}`}
+                          className={`form-control ${!validationErrors.department.isValid ? 'is-invalid' : ''}`}
                           name="department"
                           value={formData.department}
                           onChange={handleChange}
+                          onBlur={() => handleFieldBlur('department')}
                           placeholder="Engineering"
+                          maxLength="50"
                         />
                       </div>
-                      {errors.department && <div className="invalid-feedback d-block">{errors.department}</div>}
+                      {formData.department && validationErrors.department && (
+                        <small className={validationErrors.department.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.department.isValid ? '✓ Valid' : validationErrors.department.error}
+                        </small>
+                      )}
                     </div>
 
                     <div className="col-md-6">
   <label className="form-label fw-semibold">
-    Sub Business Unit
+    Sub Business Unit <span className="text-danger">*</span>
   </label>
   <input
-    type="text"
-    className={`form-control ${errors.subBusinessUnit ? 'is-invalid' : ''}`}
+    type="number"
+    className={`form-control ${!validationErrors.subBusinessUnit.isValid ? 'is-invalid' : ''}`}
     name="subBusinessUnit"
     value={formData.subBusinessUnit}
     onChange={handleChange}
-    placeholder="e.g. Digital Engineering"
+    onBlur={() => handleFieldBlur('subBusinessUnit')}
+    placeholder="Positive number (1-999999)"
+    min="1"
+    max="999999"
   />
-  {errors.subBusinessUnit && (
-    <div className="invalid-feedback d-block">
-      {errors.subBusinessUnit}
-    </div>
+  {formData.subBusinessUnit && validationErrors.subBusinessUnit && (
+    <small className={validationErrors.subBusinessUnit.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+      {validationErrors.subBusinessUnit.isValid ? '✓ Valid' : validationErrors.subBusinessUnit.error}
+    </small>
   )}
 </div>
 
@@ -311,13 +445,19 @@ if (!formData.currentOfficeLocation.trim())
                       </label>
                       <input
                         type="text"
-                        className={`form-control ${errors.designation ? 'is-invalid' : ''}`}
+                        className={`form-control ${!validationErrors.designation.isValid ? 'is-invalid' : ''}`}
                         name="designation"
                         value={formData.designation}
                         onChange={handleChange}
+                        onBlur={() => handleFieldBlur('designation')}
                         placeholder="Software Engineer"
+                        maxLength="50"
                       />
-                      {errors.designation && <div className="invalid-feedback d-block">{errors.designation}</div>}
+                      {formData.designation && validationErrors.designation && (
+                        <small className={validationErrors.designation.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.designation.isValid ? '✓ Valid' : validationErrors.designation.error}
+                        </small>
+                      )}
                     </div>
 
                     <div className="col-md-4">
@@ -352,20 +492,22 @@ if (!formData.currentOfficeLocation.trim())
                     </div>
                     <div className="col-md-6">
   <label className="form-label fw-semibold">
-    Office Location
+    Office Location <span className="text-danger">*</span>
   </label>
   <input
     type="text"
-    className={`form-control ${errors.currentOfficeLocation ? 'is-invalid' : ''}`}
+    className={`form-control ${!validationErrors.currentOfficeLocation.isValid ? 'is-invalid' : ''}`}
     name="currentOfficeLocation"
     value={formData.currentOfficeLocation}
     onChange={handleChange}
+    onBlur={() => handleFieldBlur('currentOfficeLocation')}
     placeholder="Chennai"
+    maxLength="50"
   />
-  {errors.currentOfficeLocation && (
-    <div className="invalid-feedback d-block">
-      {errors.currentOfficeLocation}
-    </div>
+  {formData.currentOfficeLocation && validationErrors.currentOfficeLocation && (
+    <small className={validationErrors.currentOfficeLocation.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+      {validationErrors.currentOfficeLocation.isValid ? '✓ Valid' : validationErrors.currentOfficeLocation.error}
+    </small>
   )}
 </div>
 
@@ -375,12 +517,19 @@ if (!formData.currentOfficeLocation.trim())
   </label>
   <input
     type="number"
-    className="form-control"
+    className={`form-control ${formData.managerId && !validationErrors.managerId.isValid ? 'is-invalid' : ''}`}
     name="managerId"
     value={formData.managerId}
     onChange={handleChange}
-    placeholder="Enter manager employee ID"
+    onBlur={() => handleFieldBlur('managerId')}
+    placeholder="Enter manager employee ID (optional)"
+    min="1"
   />
+  {formData.managerId && validationErrors.managerId && (
+    <small className={validationErrors.managerId.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+      {validationErrors.managerId.isValid ? '✓ Valid' : validationErrors.managerId.error}
+    </small>
+  )}
 </div>
 
 
@@ -391,17 +540,24 @@ if (!formData.currentOfficeLocation.trim())
                       </label>
                       <input
                         type="number"
-                        className={`form-control ${errors.salary ? 'is-invalid' : ''}`}
+                        className={`form-control ${!validationErrors.salary.isValid ? 'is-invalid' : ''}`}
                         name="salary"
                         value={formData.salary}
                         onChange={handleChange}
-                        placeholder="50000"
+                        onBlur={() => handleFieldBlur('salary')}
+                        placeholder="50000 (min: 10,000)"
+                        min="10000"
+                        step="0.01"
                       />
-                      {errors.salary && <div className="invalid-feedback d-block">{errors.salary}</div>}
+                      {formData.salary && validationErrors.salary && (
+                        <small className={validationErrors.salary.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.salary.isValid ? '✓ Valid' : validationErrors.salary.error}
+                        </small>
+                      )}
                     </div>
 
                     <div className="col-12 mt-4 d-flex gap-3">
-                      <button type="submit" className="btn btn-primary d-flex align-items-center gap-2" disabled={loading}>
+                      <button type="submit" className="btn btn-primary d-flex align-items-center gap-2" disabled={loading || !isFormValid()}>
                         {loading ? (
                           <>
                             <span className="spinner-border spinner-border-sm" />

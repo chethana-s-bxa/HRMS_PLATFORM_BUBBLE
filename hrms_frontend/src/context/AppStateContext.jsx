@@ -51,7 +51,14 @@ export const AppStateProvider = ({ children }) => {
   });
 
   const role = user?.role?.toUpperCase();
-  const canSeeNotifications = role === 'ADMIN' || role === 'HR';
+  
+  // Inline flexible role checks to handle different role formats (ADMIN, ROLE_ADMIN, admin, etc.)
+  const isEmployee = role?.includes('EMPLOYEE');
+  const isAdmin = role?.includes('ADMIN');
+  const isHR = role?.includes('HR');
+  const isAdminOrHR = isAdmin || isHR;
+  
+  const canSeeNotifications = isAdminOrHR;
   const lastNotificationIds = useRef(
     new Set(JSON.parse(localStorage.getItem('hrms-seen-notifications') || '[]'))
   );
@@ -87,8 +94,11 @@ export const AppStateProvider = ({ children }) => {
   }, [user, isAuthenticated]);
 
   const refreshProfileData = useCallback(async () => {
-    if (role !== 'EMPLOYEE') return;
+    // Check if user is an EMPLOYEE to load employee-specific data
+    console.log('[AppStateContext] refreshProfileData - role:', role, 'isEmployee:', isEmployee);
+    if (!isEmployee) return;
     const employeeId = accountInfo.employeeId || user?.employeeId;
+    console.log('[AppStateContext] refreshProfileData - employeeId:', employeeId);
     if (!employeeId) return;
     setProfileDataLoading(true);
     try {
@@ -190,7 +200,7 @@ export const AppStateProvider = ({ children }) => {
   }, [isAuthenticated, canSeeNotifications, notificationsBlocked, settings.notificationsEnabled, showToast]);
 
   const refreshPendingCounts = useCallback(async () => {
-    if (!isAuthenticated || !(role === 'HR' || role === 'ADMIN')) return;
+    if (!isAuthenticated || !isAdminOrHR) return;
     setPendingCountsLoading(true);
     try {
       const [docsResult, leavesResult] = await Promise.allSettled([
@@ -218,7 +228,7 @@ export const AppStateProvider = ({ children }) => {
   }, [isAuthenticated, role]);
 
   const refreshEmployees = useCallback(async () => {
-    if (!(role === 'HR' || role === 'ADMIN')) return;
+    if (!isAdminOrHR) return;
     setEmployeesLoading(true);
     setEmployeesError(null);
     try {
@@ -269,7 +279,7 @@ export const AppStateProvider = ({ children }) => {
 
   useEffect(() => {
     refreshPendingCounts();
-    if (!(role === 'HR' || role === 'ADMIN')) return undefined;
+    if (!isAdminOrHR) return undefined;
     const interval = setInterval(refreshPendingCounts, 30000);
     return () => clearInterval(interval);
   }, [refreshPendingCounts, role]);

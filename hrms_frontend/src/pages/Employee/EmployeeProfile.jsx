@@ -14,6 +14,19 @@ import { API_ENDPOINTS, API_AUTH_BASE_URL } from '../../config/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useAppState } from '../../context/AppStateContext';
+import CountryDropdown from '../../components/Autocomplete/CountryDropdown';
+import StateAutocomplete from '../../components/Autocomplete/StateAutocomplete';
+import CityAutocomplete from '../../components/Autocomplete/CityAutocomplete';
+import { validatePostalCode } from '../../constants/countriesData';
+import {
+  validateIndianMobileNumber,
+  validateAccountNumber,
+  validateBranchName,
+  validateIFSCCode,
+  getBankNameFromIFSC,
+  sanitizeInput,
+  handlePasteInput,
+} from '../../utils/formValidation';
 
 const skillOptions = [
   'JavaScript',
@@ -148,97 +161,69 @@ const EmployeeProfile = () => {
     ifscCode: '',
     accountType: '',
   });
-const [managerData, setManagerData] = useState(null);
+
+  const [managerData, setManagerData] = useState(null);
 const [managerImageUrl, setManagerImageUrl] = useState(null);
+
+  // Validation errors state for real-time feedback
+  const [validationErrors, setValidationErrors] = useState({
+    alternatePhoneNumber: { isValid: true, error: '' },
+    emergencyPhoneNumber: { isValid: true, error: '' },
+    accountNumber: { isValid: true, error: '' },
+    bankName: { isValid: true, error: '' },
+    branchName: { isValid: true, error: '' },
+    ifscCode: { isValid: true, error: '' },
+    accountType: { isValid: true, error: '' },
+    detectedBankName: null,
+  });
+
+  const [profileImageUrl, setProfileImageUrl] = useState(null);
 
   const [skillsForm, setSkillsForm] = useState([]);
   const [educationForm, setEducationForm] = useState([]);
   const [experienceForm, setExperienceForm] = useState([]);
-  // const [identityForm, setIdentityForm] = useState({
-  //   aadhaar: '',
-  //   pan: '',
-  //   passport: '',
-  //   drivingLicense: '',
-  //   primaryMobile: '',
-  // });
-  // const [visaForm, setVisaForm] = useState({
-  //   visaType: '',
-  //   visaNumber: '',
-  //   validFrom: '',
-  //   validTo: '',
-  // });
-  // const [dependentForm, setDependentForm] = useState([
-  //   {
-  //     tempId: `dep-${Date.now()}`,
-  //     firstName: '',
-  //     middleName: '',
-  //     lastName: '',
-  //     relation: '',
-  //     dateOfBirth: '',
-  //     address: '',
-  //     taxFiling: '',
-  //     phone: '',
-  //     nationality: '',
-  //   },
-  // ]);
-  // const [disabilityForm, setDisabilityForm] = useState({
-  //   hasDisability: '',
-  //   description: '',
-  // });
-  // const [certForm, setCertForm] = useState([
-  //   { tempId: `cert-${Date.now()}`, name: '', issuer: '', year: '' },
-  // ]);
-
-  // const handlePlaceholderSave = () => {
-  //   showToast({
-  //     type: 'info',
-  //     title: 'Saved locally',
-  //     message: 'API integration pending for this section.',
-  //   });
-  // };
-
-  useEffect(() => {
-    if (!profile?.managerId) return;
-  
-    const loadManager = async () => {
-      try {
-        const res = await axiosInstance.get(
-          `${API_ENDPOINTS.EMPLOYEE.PROFILE}/${profile.managerId}`
-        );
-  
-        setManagerData(res.data);
-      } catch (err) {
-        console.error("Failed to load manager details");
-        setManagerData(null);
-      }
-    };
-  
-    loadManager();
-  }, [profile?.managerId]);
-
-  useEffect(() => {
-    if (!profile?.managerId) return;
-  
-    const loadManagerImage = async () => {
-      try {
-        const res = await axiosInstance.get(
-          `${API_AUTH_BASE_URL}/api/profile-images/${profile.managerId}`
-        );
-  
-        setManagerImageUrl(
-          typeof res.data === "string"
-            ? res.data
-            : res.data?.url || null
-        );
-      } catch {
-        setManagerImageUrl(null);
-      }
-    };
-  
-    loadManagerImage();
-  }, [profile?.managerId]);
-
-  const [profileImageUrl, setProfileImageUrl] = useState(null);
+  const [identityForm, setIdentityForm] = useState({
+    aadhaar: '',
+    pan: '',
+    passport: '',
+    drivingLicense: '',
+    primaryMobile: '',
+  });
+  const [visaForm, setVisaForm] = useState({
+    visaType: '',
+    visaNumber: '',
+    validFrom: '',
+    validTo: '',
+  });
+  const [dependentForm, setDependentForm] = useState([
+    {
+      tempId: `dep-${Date.now()}`,
+      firstName: '',
+      middleName: '',
+      lastName: '',
+      relation: '',
+      dateOfBirth: '',
+      address: '',
+      taxFiling: '',
+      phone: '',
+      nationality: '',
+    },
+  ]);
+  const [disabilityForm, setDisabilityForm] = useState({
+    hasDisability: '',
+    description: '',
+  });
+  const [certForm, setCertForm] = useState([
+    { tempId: `cert-${Date.now()}`, name: '', issuer: '', year: '' },
+  ]);
+/// updated certForm tempId logic to ensure uniqueness and handle both existing and new entries
+  const handlePlaceholderSave = () => {
+    showToast({
+      type: 'info',
+      title: 'Saved locally',
+      message: 'API integration pending for this section.',
+    });
+  };
 
   useEffect(() => {
     if (!employeeId) return;
@@ -271,7 +256,7 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
   useEffect(() => {
     refreshProfile();
     refreshProfileData();
-  }, []);
+  }, [refreshProfile, refreshProfileData]);
 
   useEffect(() => {
     if (personal) {
@@ -370,69 +355,238 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
   );
 
 }, [experiences]);
- 
 
+useEffect(() => {
+  if (!profile?.managerId) return;
+
+  const loadManager = async () => {
+    try {
+      const res = await axiosInstance.get(
+        `${API_ENDPOINTS.EMPLOYEE.PROFILE}/${profile.managerId}`
+      );
+      setManagerData(res.data);
+    } catch (err) {
+      console.error("Failed to load manager details");
+      setManagerData(null);
+    }
+  };
+
+  loadManager();
+}, [profile?.managerId]);
+
+useEffect(() => {
+  if (!profile?.managerId) return;
+
+  const loadManagerImage = async () => {
+    try {
+      const res = await axiosInstance.get(
+        `${API_AUTH_BASE_URL}/api/profile-images/${profile.managerId}`
+      );
+
+      setManagerImageUrl(
+        typeof res.data === "string"
+          ? res.data
+          : res.data?.url || null
+      );
+    } catch {
+      setManagerImageUrl(null);
+    }
+  };
+
+  loadManagerImage();
+}, [profile?.managerId]);
+ 
+////updated experience tempId logic to handle both existing and new entries without conflict
   const handlePersonalChange = (e) => {
     const { name, value } = e.target;
-    setPersonalForm((prev) => ({ ...prev, [name]: value }));
+    if (name === 'alternatePhoneNumber') {
+      // Sanitize and remove country code if pasted
+      let cleaned = sanitizeInput(value);
+      cleaned = cleaned.replace(/^(\+91|0091)/, '').replace(/\s/g, '');
+      
+      // Allow only digits and limit to 10 characters
+      const digits = cleaned.replace(/\D/g, '').slice(0, 10);
+      
+      // Real-time validation
+      const validation = validateIndianMobileNumber(digits || value);
+      setValidationErrors((prev) => ({
+        ...prev,
+        alternatePhoneNumber: validation,
+      }));
+      
+      setPersonalForm((prev) => ({ ...prev, [name]: digits }));
+    } else {
+      setPersonalForm((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handlePersonalPhoneBlur = () => {
+    // Validate on blur for immediate feedback
+    const validation = validateIndianMobileNumber(personalForm.alternatePhoneNumber);
+    setValidationErrors((prev) => ({
+      ...prev,
+      alternatePhoneNumber: validation,
+    }));
   };
 
   const handleAddressChange = (setter) => (e) => {
     const { name, value } = e.target;
-    setter((prev) => ({ ...prev, [name]: value }));
+    
+    // Special handling for country: reset dependent fields
+    if (name === 'country') {
+      setter((prev) => ({
+        ...prev,
+        country: value,
+        state: '',
+        city: '',
+        pincode: '',
+      }));
+    } else if (name === 'state') {
+      // Reset city and pincode when state changes
+      setter((prev) => ({
+        ...prev,
+        state: value,
+        city: '',
+        pincode: '',
+      }));
+    } else if (name === 'pincode') {
+      // Allow characters based on country format
+      setter((prev) => ({ ...prev, [name]: value }));
+    } else {
+      setter((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const validatePincode = (country, pincode) => {
+    // Use dynamic validation from countriesData
+    const result = validatePostalCode(country, pincode);
+    return result.error;
   };
 
   const applyPincode = (setter) => (e) => {
     const { name, value } = e.target;
-    setter((prev) => {
-      const next = { ...prev, [name]: value };
-      if ((name === 'city' || name === 'state' || name === 'country') && !next.pincode) {
-        const key = (next.city || '').toLowerCase().trim();
-        if (pincodeLookup[key]) {
-          next.pincode = pincodeLookup[key];
-        }
-      }
-      return next;
-    });
+    if (name === 'pincode') {
+      setter((prev) => ({ ...prev, [name]: value }));
+      // Will validate on blur or save
+    } else {
+      setter((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleEmergencyChange = (e) => {
     const { name, value } = e.target;
-    setEmergencyForm((prev) => ({ ...prev, [name]: value }));
+    if (name === 'phoneNumber') {
+      // Sanitize and remove country code if pasted
+      let cleaned = sanitizeInput(value);
+      cleaned = cleaned.replace(/^(\+91|0091)/, '').replace(/\s/g, '');
+      
+      // Allow only digits and limit to 10 characters
+      const digits = cleaned.replace(/\D/g, '').slice(0, 10);
+      
+      // Real-time validation
+      const validation = validateIndianMobileNumber(digits || value);
+      setValidationErrors((prev) => ({
+        ...prev,
+        emergencyPhoneNumber: validation,
+      }));
+      
+      setEmergencyForm((prev) => ({ ...prev, [name]: digits }));
+    } else {
+      setEmergencyForm((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleEmergencyPhoneBlur = () => {
+    // Validate on blur for immediate feedback
+    const validation = validateIndianMobileNumber(emergencyForm.phoneNumber);
+    setValidationErrors((prev) => ({
+      ...prev,
+      emergencyPhoneNumber: validation,
+    }));
   };
 
   const handleAccountChange = (e) => {
     const { name, value } = e.target;
-    setAccountForm((prev) => ({ ...prev, [name]: value }));
+    let sanitized = value;
+
+    // Real-time validation for different account fields
+    if (name === 'accountNumber') {
+      sanitized = sanitizeInput(value).replace(/\s/g, '');
+      const validation = validateAccountNumber(sanitized || value);
+      setValidationErrors((prev) => ({
+        ...prev,
+        accountNumber: validation,
+      }));
+    } else if (name === 'branchName') {
+      sanitized = sanitizeInput(value);
+      const validation = validateBranchName(sanitized);
+      setValidationErrors((prev) => ({
+        ...prev,
+        branchName: validation,
+      }));
+    } else if (name === 'ifscCode') {
+      sanitized = sanitizeInput(value).toUpperCase().replace(/\s/g, '');
+      const validation = validateIFSCCode(sanitized || value);
+      setValidationErrors((prev) => ({
+        ...prev,
+        ifscCode: validation,
+        detectedBankName: validation.bankCode ? getBankNameFromIFSC(sanitized) : null,
+      }));
+    } else if (name === 'bankName') {
+      setValidationErrors((prev) => ({
+        ...prev,
+        bankName: { isValid: !!value, error: value ? '' : 'Bank name is required' },
+      }));
+    } else if (name === 'accountType') {
+      setValidationErrors((prev) => ({
+        ...prev,
+        accountType: { isValid: !!value, error: value ? '' : 'Account type is required' },
+      }));
+    }
+
+    setAccountForm((prev) => ({ ...prev, [name]: sanitized }));
   };
 
+  const handleAccountFieldBlur = (fieldName) => {
+    // Validate on blur
+    if (fieldName === 'accountNumber') {
+      const validation = validateAccountNumber(accountForm.accountNumber);
+      setValidationErrors((prev) => ({ ...prev, accountNumber: validation }));
+    } else if (fieldName === 'branchName') {
+      const validation = validateBranchName(accountForm.branchName);
+      setValidationErrors((prev) => ({ ...prev, branchName: validation }));
+    } else if (fieldName === 'ifscCode') {
+      const validation = validateIFSCCode(accountForm.ifscCode);
+      setValidationErrors((prev) => ({
+        ...prev,
+        ifscCode: validation,
+        detectedBankName: validation.isValid && validation.bankCode ? getBankNameFromIFSC(accountForm.ifscCode) : null,
+      }));
+    }
+  };
   const savePersonal = async () => {
     if (!employeeId) return;
-  
+
+    // Validate alternate phone number if provided
+    if (personalForm.alternatePhoneNumber) {
+      const validation = validateIndianMobileNumber(personalForm.alternatePhoneNumber);
+      if (!validation.isValid) {
+        showToast({ type: 'error', title: 'Invalid phone', message: validation.error });
+        return;
+      }
+    }
+
     setLoading(true);
-  
     try {
-      // ALWAYS UPDATE (record already exists)
-      await axiosInstance.put(
-        `${API_ENDPOINTS.EMPLOYEE.PERSONAL_UPDATE}/${employeeId}`,
-        personalForm
-      );
-  
-      showToast({
-        type: "success",
-        title: "Personal updated",
-        message: "Personal details saved.",
-      });
-  
+      if (personal?.personalId) {
+        await axiosInstance.put(`${API_ENDPOINTS.EMPLOYEE.PERSONAL_UPDATE}/${employeeId}`, personalForm);
+      } else {
+        await axiosInstance.post(`${API_ENDPOINTS.EMPLOYEE.PERSONAL}/${employeeId}/add-personal`, personalForm);
+      }
+      showToast({ type: 'success', title: 'Personal updated', message: 'Personal details saved.' });
       refreshProfileData();
-  
     } catch (error) {
-      console.error(error.response?.data);
-      showToast({
-        type: "error",
-        title: "Update failed",
-        message: error.response?.data?.message,
-      });
+      showToast({ type: 'error', title: 'Update failed', message: 'Unable to save personal details.' });
     } finally {
       setLoading(false);
     }
@@ -461,6 +615,14 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
 
   const saveEmergency = async () => {
     if (!employeeId) return;
+
+    // Validate phone number
+    const validation = validateIndianMobileNumber(emergencyForm.phoneNumber);
+    if (!validation.isValid) {
+      showToast({ type: 'error', title: 'Invalid phone', message: validation.error });
+      return;
+    }
+
     setLoading(true);
     try {
       if (emergencyForm.emergencyId) {
@@ -482,18 +644,50 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
 
   const saveAccount = async () => {
     if (!employeeId) return;
-  
-    // 🔥 prepare payload
+
+    // Validate all account fields
+    const accountNumberValidation = validateAccountNumber(accountForm.accountNumber);
+    const branchNameValidation = validateBranchName(accountForm.branchName);
+    const ifscCodeValidation = validateIFSCCode(accountForm.ifscCode);
+    const bankNameValid = !!accountForm.bankName;
+    const accountTypeValid = !!accountForm.accountType;
+
+    // Update validation errors for display
+    setValidationErrors((prev) => ({
+      ...prev,
+      accountNumber: accountNumberValidation,
+      branchName: branchNameValidation,
+      ifscCode: ifscCodeValidation,
+      bankName: { isValid: bankNameValid, error: bankNameValid ? '' : 'Bank name is required' },
+      accountType: { isValid: accountTypeValid, error: accountTypeValid ? '' : 'Account type is required' },
+    }));
+
+    // Check if all validations pass
+    if (
+      !accountNumberValidation.isValid ||
+      !branchNameValidation.isValid ||
+      !ifscCodeValidation.isValid ||
+      !bankNameValid ||
+      !accountTypeValid
+    ) {
+      showToast({
+        type: 'error',
+        title: 'Validation failed',
+        message: 'Please fix the errors in the form.',
+      });
+      return;
+    }
+
+    // Prepare payload
     const payload = {
       ...accountForm,
-      bankName:
-        accountForm.bankName === 'Other'
-          ? accountForm.customBankName
-          : accountForm.bankName,
+      accountNumber: accountNumberValidation.sanitized,
+      branchName: branchNameValidation.sanitized,
+      ifscCode: ifscCodeValidation.sanitized,
     };
-  
+
     setLoading(true);
-  
+
     try {
       if (accountForm.accountId) {
         await axiosInstance.put(
@@ -506,13 +700,13 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
           payload
         );
       }
-  
+
       showToast({
         type: 'success',
         title: 'Bank updated',
         message: 'Salary payment details saved.',
       });
-  
+
       refreshProfileData();
     } catch (error) {
       showToast({
@@ -867,11 +1061,6 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
       .toLowerCase()
       .includes(displayRole.toLowerCase());
 
-      const hasManager =
-  !!profile?.managerId ||
-  !!managerData ||
-  !!profile?.managerName;
-
   return (
     <Layout>
       <div className="container-fluid">
@@ -910,7 +1099,7 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
             </div>
 
             <div className="profile-meta-item">
-            <FaUserTie /> {profile?.managerName|| '-'}
+            <FaUserTie /> {profile?.managerName || '-'}
             </div>
           </div>
 
@@ -973,7 +1162,7 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
               <div>
                 <div className="text-muted small">Manager</div>
                 <div className="fw-semibold">
-  {profile?.managerName || '-'}
+                <FaUserTie /> {profile?.managerName || '-'}
 </div>
               </div>
             </div>
@@ -985,7 +1174,7 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
             <h5 className="fw-bold mb-3">Organization Chart</h5>
             <div className="org-chart">
 
-  {hasManager && (
+  {(profile?.managerId || managerData || profile?.managerName) && (
     <>
       <div className="org-node">
         <div className="org-avatar">
@@ -1001,7 +1190,9 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
               }}
             />
           ) : (
-            managerData?.firstName?.charAt(0) || "M"
+            managerData?.firstName?.charAt(0) ||
+            profile?.managerName?.charAt(0) ||
+            "M"
           )}
         </div>
 
@@ -1016,7 +1207,7 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
     </>
   )}
 
-  {/* Employee always visible */}
+  {/* Employee Node */}
   <div className="org-node highlight">
     <div className="org-avatar">
       {profileImageUrl ? (
@@ -1036,7 +1227,9 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
     </div>
 
     <div className="org-name">{fullName || "Employee"}</div>
-    <div className="org-title">{profile?.designation || "Role"}</div>
+    <div className="org-title">
+      {profile?.designation || "Role"}
+    </div>
   </div>
 
 </div>
@@ -1103,7 +1296,14 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
                     </div>
                     <div className="col-md-6">
                       <label className="form-label">Personal Mobile</label>
-                      <input className="form-control" type="text" value={personalForm.alternatePhoneNumber || ''} disabled />
+                      <input
+                        className="form-control"
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
+                        value={personalForm.alternatePhoneNumber || ''}
+                        disabled
+                      />
                     </div>
                   </div>
                 </div>
@@ -1223,12 +1423,21 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
                     <div className="col-md-4">
                       <label className="form-label">Alternate Phone</label>
                       <input
-                        className="form-control"
-                        type="text"
+                        className={`form-control ${validationErrors.alternatePhoneNumber && !validationErrors.alternatePhoneNumber.isValid ? 'is-invalid' : ''}`}
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
                         name="alternatePhoneNumber"
                         value={personalForm.alternatePhoneNumber || ''}
                         onChange={handlePersonalChange}
+                        onBlur={handlePersonalPhoneBlur}
+                        placeholder="10 digits"
                       />
+                      {personalForm.alternatePhoneNumber && validationErrors.alternatePhoneNumber && (
+                        <small className={validationErrors.alternatePhoneNumber.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.alternatePhoneNumber.isValid ? '✓ Valid' : validationErrors.alternatePhoneNumber.error}
+                        </small>
+                      )}
                     </div>
                   </div>
                   <div className="mt-3">
@@ -1245,18 +1454,104 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
                       <div className="border rounded p-3 h-100">
                         <div className="fw-semibold mb-2">Current Address</div>
                         <div className="row g-2">
-                          {['houseNumber', 'street', 'landmark', 'city', 'state', 'country', 'pincode'].map((field) => (
-                            <div className="col-6" key={field}>
-                              <label className="form-label text-capitalize">{field.replace('Number', ' Number')}</label>
-                              <input
-                                className="form-control"
-                                name={field}
-                                value={currentAddressForm[field] || ''}
-                                onChange={handleAddressChange(setCurrentAddressForm)}
-                                onBlur={applyPincode(setCurrentAddressForm)}
-                              />
-                            </div>
-                          ))}
+                          {/* House Number */}
+                          <div className="col-6">
+                            <label className="form-label">House Number</label>
+                            <input
+                              className="form-control"
+                              name="houseNumber"
+                              value={currentAddressForm.houseNumber || ''}
+                              onChange={handleAddressChange(setCurrentAddressForm)}
+                            />
+                          </div>
+                          {/* Street */}
+                          <div className="col-6">
+                            <label className="form-label">Street</label>
+                            <input
+                              className="form-control"
+                              name="street"
+                              value={currentAddressForm.street || ''}
+                              onChange={handleAddressChange(setCurrentAddressForm)}
+                            />
+                          </div>
+                          {/* Landmark */}
+                          <div className="col-6">
+                            <label className="form-label">Landmark</label>
+                            <input
+                              className="form-control"
+                              name="landmark"
+                              value={currentAddressForm.landmark || ''}
+                              onChange={handleAddressChange(setCurrentAddressForm)}
+                            />
+                          </div>
+                          {/* Country - Dropdown (First) */}
+                          <div className="col-6">
+                            <label className="form-label">Country</label>
+                            <CountryDropdown
+                              value={currentAddressForm.country || ''}
+                              onChange={handleAddressChange(setCurrentAddressForm)}
+                              placeholder="Select country..."
+                            />
+                          </div>
+                          {/* State - Dependent on Country */}
+                          <div className="col-6">
+                            <label className="form-label">State/Province</label>
+                            <StateAutocomplete
+                              country={currentAddressForm.country || ''}
+                              value={currentAddressForm.state || ''}
+                              onChange={handleAddressChange(setCurrentAddressForm)}
+                              onBlur={applyPincode(setCurrentAddressForm)}
+                              placeholder="Type to search state..."
+                            />
+                          </div>
+                          {/* City - Dependent on State */}
+                          <div className="col-6">
+                            <label className="form-label">City</label>
+                            <CityAutocomplete
+                              country={currentAddressForm.country || ''}
+                              state={currentAddressForm.state || ''}
+                              value={currentAddressForm.city || ''}
+                              onChange={handleAddressChange(setCurrentAddressForm)}
+                              onBlur={applyPincode(setCurrentAddressForm)}
+                              placeholder="Type to search city..."
+                            />
+                          </div>
+                          {/* Pincode - Dynamic Validation */}
+                          <div className="col-6">
+                            <label className="form-label">
+                              {currentAddressForm.country === 'USA' ? 'ZIP Code' : 'Postal Code'}
+                            </label>
+                            <input
+                              className="form-control"
+                              name="pincode"
+                              type="text"
+                              value={currentAddressForm.pincode || ''}
+                              onChange={handleAddressChange(setCurrentAddressForm)}
+                              onBlur={applyPincode(setCurrentAddressForm)}
+                              placeholder={
+                                currentAddressForm.country === 'India'
+                                  ? '6 digits'
+                                  : currentAddressForm.country === 'USA'
+                                  ? '5 digits'
+                                  : currentAddressForm.country === 'Canada'
+                                  ? 'e.g., K1A 0B1'
+                                  : 'Postal code'
+                              }
+                            />
+                            {currentAddressForm.pincode && currentAddressForm.country && (() => {
+                              const validation = validatePostalCode(
+                                currentAddressForm.country,
+                                currentAddressForm.pincode
+                              );
+                              return validation.error ? (
+                                <small className="text-danger d-block mt-1">
+                                  {validation.error}
+                                </small>
+                              ) : (
+                                <small className="text-success d-block mt-1">✓ Valid</small>
+                              );
+                            })()}
+                          </div>
                         </div>
                         <button
                           className="btn btn-outline-primary btn-sm mt-3"
@@ -1300,19 +1595,111 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
                           </label>
                         </div>
                         <div className="row g-2">
-                          {['houseNumber', 'street', 'landmark', 'city', 'state', 'country', 'pincode'].map((field) => (
-                            <div className="col-6" key={field}>
-                              <label className="form-label text-capitalize">{field.replace('Number', ' Number')}</label>
-                              <input
-                                className="form-control"
-                                name={field}
-                                value={permanentAddressForm[field] || ''}
-                                onChange={handleAddressChange(setPermanentAddressForm)}
-                                onBlur={applyPincode(setPermanentAddressForm)}
-                                disabled={sameAsCurrent}
-                              />
-                            </div>
-                          ))}
+                          {/* House Number */}
+                          <div className="col-6">
+                            <label className="form-label">House Number</label>
+                            <input
+                              className="form-control"
+                              name="houseNumber"
+                              value={permanentAddressForm.houseNumber || ''}
+                              onChange={handleAddressChange(setPermanentAddressForm)}
+                              disabled={sameAsCurrent}
+                            />
+                          </div>
+                          {/* Street */}
+                          <div className="col-6">
+                            <label className="form-label">Street</label>
+                            <input
+                              className="form-control"
+                              name="street"
+                              value={permanentAddressForm.street || ''}
+                              onChange={handleAddressChange(setPermanentAddressForm)}
+                              disabled={sameAsCurrent}
+                            />
+                          </div>
+                          {/* Landmark */}
+                          <div className="col-6">
+                            <label className="form-label">Landmark</label>
+                            <input
+                              className="form-control"
+                              name="landmark"
+                              value={permanentAddressForm.landmark || ''}
+                              onChange={handleAddressChange(setPermanentAddressForm)}
+                              disabled={sameAsCurrent}
+                            />
+                          </div>
+                          {/* Country - Dropdown (First) */}
+                          <div className="col-6">
+                            <label className="form-label">Country</label>
+                            <CountryDropdown
+                              value={permanentAddressForm.country || ''}
+                              onChange={handleAddressChange(setPermanentAddressForm)}
+                              placeholder="Select country..."
+                              disabled={sameAsCurrent}
+                            />
+                          </div>
+                          {/* State - Dependent on Country */}
+                          <div className="col-6">
+                            <label className="form-label">State/Province</label>
+                            <StateAutocomplete
+                              country={permanentAddressForm.country || ''}
+                              value={permanentAddressForm.state || ''}
+                              onChange={handleAddressChange(setPermanentAddressForm)}
+                              onBlur={applyPincode(setPermanentAddressForm)}
+                              placeholder="Type to search state..."
+                              disabled={sameAsCurrent}
+                            />
+                          </div>
+                          {/* City - Dependent on State */}
+                          <div className="col-6">
+                            <label className="form-label">City</label>
+                            <CityAutocomplete
+                              country={permanentAddressForm.country || ''}
+                              state={permanentAddressForm.state || ''}
+                              value={permanentAddressForm.city || ''}
+                              onChange={handleAddressChange(setPermanentAddressForm)}
+                              onBlur={applyPincode(setPermanentAddressForm)}
+                              placeholder="Type to search city..."
+                              disabled={sameAsCurrent}
+                            />
+                          </div>
+                          {/* Pincode - Dynamic Validation */}
+                          <div className="col-6">
+                            <label className="form-label">
+                              {permanentAddressForm.country === 'USA' ? 'ZIP Code' : 'Postal Code'}
+                            </label>
+                            <input
+                              className="form-control"
+                              name="pincode"
+                              type="text"
+                              value={permanentAddressForm.pincode || ''}
+                              onChange={handleAddressChange(setPermanentAddressForm)}
+                              onBlur={applyPincode(setPermanentAddressForm)}
+                              placeholder={
+                                permanentAddressForm.country === 'India'
+                                  ? '6 digits'
+                                  : permanentAddressForm.country === 'USA'
+                                  ? '5 digits'
+                                  : permanentAddressForm.country === 'Canada'
+                                  ? 'e.g., K1A 0B1'
+                                  : 'Postal code'
+                              }
+                              disabled={sameAsCurrent}
+                            />
+                            {permanentAddressForm.pincode && permanentAddressForm.country && (() => {
+                              const validation = validatePostalCode(
+                                permanentAddressForm.country,
+                                permanentAddressForm.pincode
+                              );
+                              return validation.error ? (
+                                <small className="text-danger d-block mt-1">
+                                  {validation.error}
+                                </small>
+                              ) : (
+                                <small className="text-success d-block mt-1">✓ Valid</small>
+                              );
+                            })()}
+                          </div>
                         </div>
                         <button
                           className="btn btn-outline-primary btn-sm mt-3"
@@ -1347,7 +1734,22 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
                     </div>
                     <div className="col-md-4">
                       <label className="form-label">Phone</label>
-                      <input className="form-control" name="phoneNumber" value={emergencyForm.phoneNumber} onChange={handleEmergencyChange} />
+                      <input
+                        className={`form-control ${validationErrors.emergencyPhoneNumber && !validationErrors.emergencyPhoneNumber.isValid ? 'is-invalid' : ''}`}
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
+                        name="phoneNumber"
+                        value={emergencyForm.phoneNumber}
+                        onChange={handleEmergencyChange}
+                        onBlur={handleEmergencyPhoneBlur}
+                        placeholder="10 digits"
+                      />
+                      {emergencyForm.phoneNumber && validationErrors.emergencyPhoneNumber && (
+                        <small className={validationErrors.emergencyPhoneNumber.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.emergencyPhoneNumber.isValid ? '✓ Valid' : validationErrors.emergencyPhoneNumber.error}
+                        </small>
+                      )}
                     </div>
                   </div>
                   <button className="btn btn-primary mt-3" type="button" disabled={loading} onClick={saveEmergency}>
@@ -1359,7 +1761,7 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
             )}
             {!profileLoading && (
               <div className="profile-section">
-                <div className="profile-section-title">Job Details</div>
+                <div className="profile-section-title">Job</div>
                 <div className="row g-4">
                 <div className="col-12 section-card">
                   <div className="row g-3">
@@ -1419,65 +1821,125 @@ const [managerImageUrl, setManagerImageUrl] = useState(null);
                 <div className="row g-4">
                 <div className="col-12 section-card">
                   <div className="row g-3">
+                    {/* Account Number */}
                     <div className="col-md-4">
                       <label className="form-label">Account Number</label>
-                      <input className="form-control" name="accountNumber" value={accountForm.accountNumber} onChange={handleAccountChange} />
+                      <input
+                        className={`form-control ${validationErrors.accountNumber && !validationErrors.accountNumber.isValid ? 'is-invalid' : ''}`}
+                        name="accountNumber"
+                        value={accountForm.accountNumber}
+                        onChange={handleAccountChange}
+                        onBlur={() => handleAccountFieldBlur('accountNumber')}
+                        placeholder="9-18 digits"
+                        maxLength="18"
+                        inputMode="numeric"
+                      />
+                      {accountForm.accountNumber && validationErrors.accountNumber && (
+                        <small className={validationErrors.accountNumber.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.accountNumber.isValid ? '✓ Valid' : validationErrors.accountNumber.error}
+                        </small>
+                      )}
                     </div>
+
+                    {/* Bank Name - Exclude "Other" */}
                     <div className="col-md-4">
                       <label className="form-label">Bank Name</label>
-                      <select className="form-select" name="bankName" value={accountForm.bankName} onChange={handleAccountChange}>
+                      <select
+                        className={`form-select ${validationErrors.bankName && !validationErrors.bankName.isValid ? 'is-invalid' : ''}`}
+                        name="bankName"
+                        value={accountForm.bankName}
+                        onChange={handleAccountChange}
+                      >
                         <option value="">Select</option>
-                        {bankNameOptions.map((option) => (
+                        {bankNameOptions.filter(option => option !== 'Other').map((option) => (
                           <option key={option} value={option}>
                             {option}
                           </option>
                         ))}
                       </select>
+                      {validationErrors.bankName && !validationErrors.bankName.isValid && (
+                        <small className="text-danger d-block mt-1">{validationErrors.bankName.error}</small>
+                      )}
                     </div>
-                    {accountForm.bankName === 'Other' && (
-  <div className="col-md-4">
-    <label className="form-label">Specify Bank Name</label>
-    <input
-      className="form-control"
-      name="customBankName"
-      value={accountForm.customBankName}
-      onChange={handleAccountChange}
-      placeholder="Enter bank name"
-    />
-  </div>
-)}
 
-<div className="col-md-4">
-  <label className="form-label">Bank Branch</label>
-  <input
-    className="form-control"
-    name="branchName"
-    value={accountForm.branchName}
-    onChange={handleAccountChange}
-  />
-</div>
+                    {/* Branch Name */}
+                    <div className="col-md-4">
+                      <label className="form-label">Bank Branch</label>
+                      <input
+                        className={`form-control ${validationErrors.branchName && !validationErrors.branchName.isValid ? 'is-invalid' : ''}`}
+                        name="branchName"
+                        value={accountForm.branchName}
+                        onChange={(e) => {
+                          // Allow only letters and spaces
+                          const filtered = e.target.value.replace(/[^A-Za-z\s]/g, '');
+                          e.target.value = filtered;
+                          handleAccountChange(e);
+                        }}
+                        onBlur={() => handleAccountFieldBlur('branchName')}
+                        placeholder="Branch name (letters only)"
+                        maxLength="50"
+                      />
+                      {accountForm.branchName && validationErrors.branchName && (
+                        <small className={validationErrors.branchName.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.branchName.isValid ? '✓ Valid' : validationErrors.branchName.error}
+                        </small>
+                      )}
+                    </div>
 
-
+                    {/* IFSC Code */}
                     <div className="col-md-4">
                       <label className="form-label">IFSC Code</label>
-                      <input className="form-control" name="ifscCode" value={accountForm.ifscCode} onChange={handleAccountChange} />
+                      <input
+                        className={`form-control ${validationErrors.ifscCode && !validationErrors.ifscCode.isValid ? 'is-invalid' : ''}`}
+                        name="ifscCode"
+                        value={accountForm.ifscCode}
+                        onChange={handleAccountChange}
+                        onBlur={() => handleAccountFieldBlur('ifscCode')}
+                        placeholder="e.g., SBIN0001234"
+                        maxLength={11}
+                      />
+                      {accountForm.ifscCode && validationErrors.ifscCode && (
+                        <small className={validationErrors.ifscCode.isValid ? 'text-success d-block mt-1' : 'text-danger d-block mt-1'}>
+                          {validationErrors.ifscCode.isValid ? '✓ Valid' : validationErrors.ifscCode.error}
+                        </small>
+                      )}
                     </div>
+
+                    {/* Detected Bank Name from IFSC */}
+                    {validationErrors.detectedBankName && (
+                      <div className="col-md-4">
+                        <label className="form-label">Detected Bank</label>
+                        <input
+                          className="form-control"
+                          type="text"
+                          value={validationErrors.detectedBankName}
+                          disabled
+                          style={{ backgroundColor: '#f0f0f0' }}
+                        />
+                        <small className="text-muted d-block mt-1">Auto-detected from IFSC</small>
+                      </div>
+                    )}
+
+                    {/* Account Type - Exclude "Other" */}
                     <div className="col-md-4">
-  <label className="form-label">Account Type</label>
-  <select
-    className="form-select"
-    name="accountType"
-    value={accountForm.accountType}
-    onChange={handleAccountChange}
-  >
-    <option value="">Select</option>
-    {accountTypeOptions.map((option) => (
-      <option key={option} value={option}>
-        {option}
-      </option>
-    ))}
-  </select>
-</div>
+                      <label className="form-label">Account Type</label>
+                      <select
+                        className={`form-select ${validationErrors.accountType && !validationErrors.accountType.isValid ? 'is-invalid' : ''}`}
+                        name="accountType"
+                        value={accountForm.accountType}
+                        onChange={handleAccountChange}
+                      >
+                        <option value="">Select</option>
+                        {accountTypeOptions.filter(option => option !== 'Other').map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      {validationErrors.accountType && !validationErrors.accountType.isValid && (
+                        <small className="text-danger d-block mt-1">{validationErrors.accountType.error}</small>
+                      )}
+                    </div>
                   </div>
                   <button className="btn btn-primary mt-3" type="button" disabled={loading} onClick={saveAccount}>
                     Save Bank Details
